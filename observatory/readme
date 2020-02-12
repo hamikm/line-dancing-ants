@@ -1,0 +1,28 @@
+ ****************************************
+ *                                      *
+ *            Observatory               *
+ *            Chain Expansion v.1       *
+ *                                      *
+ * ------------------------------------ *
+ *                                      *
+ * Originally written by:               *
+ *   (others who forgot to document     *
+ *   their work)                        *
+ *                                      *
+ * as a swarmcraft add-on that          *
+ * graphically displays the contents of *
+ * r_pos.dat and p_pos.dat.             *
+ *                                      *
+ * Modified by:                         *
+ *   Hamik Mukelyan                     *
+ *                                      *
+ *  to display a circle around the      *
+ * collection "home" location           *
+ *  to run slowly on modern computers   *
+ * (added delay argument)               *
+ *  to display chain robs and -1 robots *
+ * in diff colors (r_pos is now of form *
+ * %c %f %f. where the char is a c for  *
+ * chain or n for -1                    *
+ *                                      *
+ ****************************************

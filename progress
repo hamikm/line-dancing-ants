@@ -1,0 +1,618 @@
+10/29
+this version writes the location of the home directory to the beginning of the r_pos.dat file. new_observatory has been modified to work with this change.
+
+11/07
+this version has all clustering and multiclustering code removed. puck types have also been eliminated. main is short and easily understood now!
+
+11/09
+NOTE: as i commented in swarmcraft.c, ONLY r_move_newunbound.c has been modified for the search and retrieval "chain" simulation. the other r_move functions such as r_move_brownian.c are still in their original, puck clustering states
+
+* swarmcraft.c has been cleaned up
+* an outline of the new structure of r_move is near the beginning of r_move_newunbound.c. i began implementing the new r_move by modifying r_move so the robots spiral when they encounter pucks instead of moving randomly. the outline from r_move_newunbound.c is reproduced here:
+ variables chain-seeking
+   with puck
+   without puck #
+ chain-attaching
+ chain-moving
+   with puck
+   without puck
+i implemented the part of # that doesn't assume a chain might exist
+*r_move_newunbound.c has been cleaned up
+
+must:
+* get robots to stop at home location to see if robots effectively reach the home location with the new spiral-avoid-spiral algorithm (as i explained earlier, the robots now spiral until they determine they are too near another robot or a puck, in which case they randomly turn and commence a new spiral). i know there are some cases for which all the robots do not converge at the home location (a trivial example: the home location is surrounded by a puck cluster the robots can't get through), but i think that most robots will converge at the home location in most cases. of course, a suspicion that the home-seeking algorithm wull suffice is insufficient, so i will have the robots stop at the home location to test my conclusions before i continue coding the other cases
+* figure out how to denote chain-seeking, chain-joining, and chain-moving states and implement and document my decision (in allen's simulation, robots that were spiraling had a state -1, an anchor robot had a state 0, and robots in the chain had natural number states that reflected their positions in chain. robot in chain nearest home location had state 1, robot in chain nearest that robot had state 2, etc.)
+* must partition r_move into different parts to reflect different movement behaviors for different states
+* must create create two r_decision functions: one for the chain-seeking state (in case a robot carrying a puck loses the chain and wishes to deposit its puck before re-attaching) and one for the chain-moving state
+
+11/12
+got robots to stop when they come within 10 units of the home location and partitioned r_move into three parts for the three states (-1 for spiral state, 0 for attaching state, natural number for in chain state). spiral part of the function is basically done. need to figure out two remaining parts
+
+attaching part: try to find robot with greatest state (no details yet)
+
+in chain part: chain rotates around the home location because robot at end of chain moves, robot below that robot moves to midpoint of the line between the new position of the end robot and the position of the next lowest robot. the other robots behave similarly. robot nearest home location may have to move like the end robot (what would it find its midpoint relative to? **EDIT** relative 0 collection point! some adjusting for arbitrary distance between first robot and collection point necessary). when any agent sees a puck, it stops (therefore the whole chain stops **EDIT** this is not the case. robots below the robot that stops stop, but those above continue moving (Kazadi). need to figure out how to get others to stop). the end robot moves down the chain collecting all pucks in its viewing radius (it uses the chain as a path to the collection locaiton and its nest at the top of the chain)
+
+11/14
+edited 11/12 entry. to address the chain stopping complication, i will add one "stop" bit of communication data to the eight or so state bits i was planning to have the robots communicate (the state bits are the -1, 0, 1... numbers). a robot will change its stop bit when a puck is spotted and the bits of all robots that see this change (except ones in the -1 state) will also change, so the entire chain will stop. once the chain has stopped, the robot with the highest state will go down the chain and collect and return all pucks within the maximum viewing distance of the chain. the chain will resume movement when the robot returns to the top and changes its new bit's value. BUT there is a problem with this algorithm. as soon as the highest state robot leaves the viewing range of the next highest state robot, it assumes it is the highest state robot and acts like the true highest state robot. BUT this is ok. will prove this later
+
+11/16
+since r_move is essentially the robots' control algorithm, it has to be slightly modified. i flowcharted my control algorithm today, so on saturday i will modify the structure of r_move to reflect this flowchart. once the new structure is in place (trivial), i need to implement three things: move to highest state function, move in chain function, and collect pucks function. the current version of my simulation (old, no control algorithm r_move) has been archived
+
+11/19:1
+added robot with 0 state at home location. have flowchart i will use for r_move now
+
+11/19:2
+*removed t_time from simulation because it looked unnecessary (and was)
+*added new flowchart structure to r_move (see comments in ~hamik/swarm/chain_simulation/current_sim/r_move_newunbound.c)
+
+must:
+* implement chain formation and movement part of r_move asap b/c the puck collection stuff will take a while to implement and optimize
+* REMEMBER: robots can now see 360 degrees (P_LIST and some other functions will have to be slightly modified. use grep to find occurences of string "angle" and work off those occurences)
+
+11/19:3
+* added function r_list that returns a linked list of all the robots that a particular robot can see. this function is used at the beginning of r_move (see the new r_move outline)
+* added function free_robot_list that clears space used by lists generated by r_list
+* these functions compile, but i have not tested them yet. a simulation containing all the changes documented in this file until this point is archived at ~hamik/swarm/chain_simulation/sim_copies_by_date/11.19.05::new.r_move.structure
+
+11/20:1
+*tested and extensively revised r_list and free_robot_list
+*archived simulation with new r_move structure and attempted r_list and free_robot_list functions replaced by this working version
+
+11/20:2
+*checked to see if the robots see home loc robot. didn't, so fixed this (the last robot struct in a_robot didn't point to the home loc robot)
+*fixed segmentation faults for the cases r_tot < 0, p_tot = 0 && (r_tot == 2 || r_tot == 3), and (i think) p_tot < 0
+*re-archived this version
+*entirely ready to implement chain creation behavior!
+
+11/20:3
+*said in 11.19:2 entry that P_LIST and some other functions may have to be modified because the viewing angle has been eliminated. actually don't have to change any functions. just kept viewing angle and set it to 2 * PI (doh!)
+
+11/21
+*IMPORTANT: changed r_move so angle modifications go into effect at the end of the function and not a timestep later, but i think this causes robot overlapping. i'm testing some datasets to see if this is the case
+*check out the observatory of ~hamik/swarm/chain_simulation/sim_copies_by_date/11.22.05::robot.overlapping after running the swarmcraft build in that directory with about 50 robots. run the executable in the observatory (or build test_for_robot_collisions.c and run it). it find the distance between each robot in one timestep and all other robots in that timestep and prints an "uh oh", the positions of the robots, and the distance between the robots if the distance between the robots' positions is < 2 * R_SIZE (if they overlap). it prints "uh oh"s for the IMPORTANT case above _and_ for the "normal" case where the angles lag a timestep behind. investigate! this means that robots overlap in all original swarmcraft simulations!
+
+11/24
+complained about robot collisions in last entry. 
+thought robots were colliding because i had modified r_move so that angle changes went into effect in the current timestep instead of the next timestep. to see if robots were actually colliding, i wrote a program collision_test (the observatory program wasn't a good test tool) and found that my robots actually collide. i removed the changes i made and ran my test program again but continued to get robot collisions. since i removed the changes i made, i thought that all swarmcraft simulations must have colliding robots, so i told dr k to look into it. actually, after about 10 minutes of testing, i found out that robots collide only in my simulation. i thought the problem was the absence of t_time, but after i added the original t_time stuff robots continued to collide. after two or three hours of testing, i found that the misbehaving line was the move execution line in r_move: a_robot->p = VEC_ADD (a_robot->p,VEC_SCL(u,x)); (line 214)
+so... no more collisions in my simulation and ready (again) to implement chain creation behavior
+
+11/25:1
+r_list doesn't return a linked list of the robots in the viewing range... it returns robots that are really far apart -_-. this is a sad thing for multiple reasons. first, my function doesn't work as intended. since i will use my function as i intended it be used, this is sad. second, it's sad because i can't get my robots to stop when they see the home loc robot. originally, they would stop when they came within R_VIEW_DIST units of the home location. they "knew" where the location was. since i can't assume they "know" where the collection point is, i have a robot sit there. but i can't get to robots to stop when they see the home loc robot because even though the home loc robot gets into the "viewable robots" list, it appears to be > R_VIEW_DIST units away so the robots don't stop. r_list is turning out the right robots, but their positional information seems to be screwed up. since the last reason basically complained that r_list doesn't work as intended, i have only one reason. by the way, i modify earlier entries when i think i can make them more clear or when i can't stand their blatant spelling and grammar errors. i modified this entry after i wrote the 11/25:2 entry
+
+11/25:2
+the reason r_list appeared to return robots that were far apart was the linked list that r_list contructed contained robots with only state and identification information. they didn't have any position information. after i had r_list create lists of robots with positions, i used the "viewable robots" list to get my robots to stop once they saw the home loc robot, not stop just because they came within R_VIEW_DIST units of the home location (which they unfairly accessed before)
+
+11/26:1
+*as the chain increases in size, the highest state robot must move in larger circles. will have the highest state robot modofy its angle inv proportional to its state (length of chain)
+*added a function HIGHEST_STATE that returns a pointer to the robot with the highest state in a linked list of robots. tested function. works
+*added a function ANGLE that returns the angle between two robots relative the first robot argument. (nonlocal angles for sake of simulation simplicity, but it's easy to prove that local angles are the same as global angles when robots know which way is their "forward" direction). tested function extensively. works
+*many miscellaneous changes. best look at r_move_newunbound.c and swarmcraft.c for the changes
+
+11/26:2
+for clarity, a copy of the my robots' control algorithm:
+
+01  FIND ALL ROBOTS WITHIN VIEWING DISTANCE 
+02  IF DO NOT SEE ANY ROBOTS WITH STATES > -1
+03    IF OWN STATE == -1
+04      SPIRAL
+05    IF STATE > 0
+06      SET OWN STATE = -1
+07  ELSE (DO SEE ROBOTS WITH STATES > -1)
+08    IF OWN STATE == -1
+09      IF AT HIGHEST VISIBLE STATE (IF IN POSITION TO ATTACH)
+10        SET OWN STATE = HIGHEST VISIBLE STATE + 1
+11      ELSE (IF NOT AT HIGHEST VISIBLE STATE)
+12        MOVE TO HIGHEST VISIBLE STATE
+13    IF STATE > 0
+14      IF SEE PUCK SUFFICIENTLY DISTANT FROM HOME LOCATION OR SEE
+        NEIGHBOR WITH DIFFERENT STOP BIT
+15        CHANGE STOP BIT AND STOP
+16        IF HAVE HIGHEST VISIBLE STATE
+17          LEAVE PERCH TO COLLECT PUCKS BUT REMAIN IN SIGHT OF CHAIN
+18      ELSE (IF DO NOT SEE PUCK OR PUCK IS NOT SUFFICIENTLY DISTANT 
+        FROM HOME LOCATION AND NEIGHBORS' STOP BITS ARE SAME AS OWN)
+19        IF ARE HIGHEST VISIBLE STATE
+20          MOVE THE CHAIN
+21        ELSE (IF NOT HIGHEST VISIBLE STATE)
+22          FOLLOW
+23  DON'T BUMP INTO PUCKS OR ROBOTS
+
+fully implemented 01-08, 10-11, 13, 19, and 21
+23 implemented by predecessors
+partially implemented
+  09: right now, being "at highest state" means being within 
+  CHAIN_DENSITY + or - D_ERROR units of the visible robot with the 
+  highest state. but i need to make sure that a robot only considers
+  itself at the highest state when its angle to the highest state robot 
+  is within A_ERROR radians of the angle between the highest state 
+  robot and the robot with the next highest state. it doesn't matter 
+  which direction the chain starts off in, so i'll have the first robot 
+  that attaches to the chain assume the angle between the highest state 
+  robot and the next highest state robot is its angle to the highest 
+  state robot. robots can see at least two robots in each direction up 
+  and down the chain if CHAIN_DENSITY < R_VIEW_DIST/2 - D_ERROR.
+  12: right now, the robots move to the highest state robot by setting
+  their angles = the angle to the highest state robot. i have them 
+  stop once they get within CHAIN_DENSITY + or - D_ERROR units of 
+  the highest state robot, but i need to have them point themselves
+  toward their "perch" (top of chain) positions once they get to this
+  point
+will implement 20 and 22 soon
+won't implement 14-18 until chain formation behavior works
+
+11/27
+cleaned up simulation directory. new layout:
+
+current_sim/
+|-- Makefile
+|-- PROGRESS
+|-- README
+|-- behavior_functions
+|   |-- angle_between_robots.c
+|   |-- highest_visible_state.c
+|   |-- p_closest.c
+|   |-- p_drop.c
+|   |-- p_list.c
+|   |-- r_decision.c
+|   |-- r_list.c
+|   |-- r_move_bound.c
+|   |-- r_move_brownian.c
+|   |-- r_move_newunbound.c
+|   |-- r_move_non_spiral.c
+|   |-- r_move_unbound.c
+|   |-- r_prob.c
+|   |-- r_turn.c
+|   `-- rand_drop.c
+|-- data_files
+|   `-- README
+|-- main.c
+|-- math_utilities
+|   |-- rand2.c
+|   |-- random_position.c
+|   |-- seed.c
+|   |-- sqr.c
+|   |-- vec_add.c
+|   |-- vec_crs.c
+|   |-- vec_dif.c
+|   |-- vec_dot.c
+|   |-- vec_mag.c
+|   |-- vec_rot.c
+|   |-- vec_scl.c
+|   `-- vec_unt.c
+|-- memory_utilities
+|   |-- free_list.c
+|   `-- free_robot_list.c
+|-- misc_utilities
+|   `-- sign.c
+|-- placement_functions
+|   |-- p_placement_2circle.c
+|   |-- p_placement_circle.c
+|   |-- p_placement_hexagon.c
+|   |-- p_placement_line.c
+|   |-- p_placement_rand.c
+|   |-- p_placement_triangle.c
+|   |-- r_placement_rand.c
+|   `-- r_placement_wall.c
+|-- string_utilities
+|   |-- strtoint.c
+|   `-- substring.c
+|-- swarmcraft
+|-- swarmcraft.c
+`-- test_functions
+    |-- README
+    |-- collision_test
+    |-- test_ANGLE.c
+    `-- test_for_robot_collisions.c
+
+11/28
+attempted to implement the highest state conditional and move chain function. found that robots should be able to move a fraction of R_MOVE_MAX. will elaborate tomorrow
+
+12/12
+wrote ROB_STATE function to return a pointer to the viewable robot with the indicated state. need this function so robots can determine which viewable robots are above and below them in the
+chain. implemented chain movement behavior for first robot. see ~hamik/swarm/chain_simulation/sim_copies_by_date/12.12.05::state_1_robot_behavior_implemented for current sim
+
+12/13
+*rfile_sim1 ran too quickly on my computer after i installed graphic card drivers, so i added some delay functionality: 
+  rfile_sim <delay int> <settings file> <robot file name> <puck file name> 
+  [shiftx] [shifty] [sizex] [sizey] [num_skipped] [seconds pause per frame]
+each frame will go through delay^4 empty loops before ending, so whoever runs this version of observatory will have a lot of speed flexibility
+*i extensively debugged highest_visible_state.c and a few other functions so the simulation wouldn't core dump with a lot of robots
+*i labelled and commented-out my console output debugging statements because i started getting 200+MB output files
+*i implemented the chain creation algorithm and tested my simulation with up to one hundred robots. i got fairly straight chains, but there are a few implementation details i need to discuss with dr. k: during the "midpoint" following behavior, the robots don't point their angles to the midpoint and move the distance to the midpoint--they just jump to it. i think that this behavior is ok because the distance to the midpoint is always less than R_MOVE_MAX and jumping to the midpoint is the same as pointing toward the midpoint and moving forward the distance to it. my other equivalent "pointing" then "shooting" method didn't work because i just didn't implement it correctly. both behaviors are easy to substitute in the sim. grep FOLLOW ~hamik/swarm/chain_simulation/sim_copies_by_date/12.13.05::chain.with.jump/behavior_functions.*. the stuff that's commented-out is the point and shoot stuff. the stuff that's there right now is the jump stuff
+*there are screenshots of chains with different lengths in ~hamik/swarm/chain_simulation/sim_copies_by_date/12.13.05::chain.with.jump !
+
+12/15
+my simulation can produce really long, straight chains, but there are two
+major problems with the algorithm i'm using right now. the highest state
+robot moves perpendicularly to the line connecting it to the robot with
+the next highest state, so the highest state robot is prone to
+spiraling off unless it moves a little less than perpendicular when it
+gets too far from the robot with the next highest state. at the
+same time, the highest state robot needs to move a little more than
+perpendicular in case it gets too close to the robot with the
+next highest state. but this behavior breaks down when the chain curves.
+when the chain curves, the chain rotates around a pronounced part of the
+curve and the rotating end crashes into the stationary end. this means
+that i can't just find the ideal angle modification for a certain
+R_MOVE_MAX and chain length; i need to fix the  attachment behavior of the
+robots. my idea is keeping the entire chain still while it's being built
+(while state -1 robots are viewable). my other major problem is robot
+overlapping. right now, robots "jump" to the
+midsection of the line connecting the robots with the next higher and next
+lower state robots, so they skip collision avoidance behavior. the reason
+i'm using this method is because when i have the robots point themselves
+toward the midection then move the distance to the midsection, they go
+through collision avoidance and mess up the chain. i want to keep the
+chain still while it's being built for this reason. to fix the chain
+falling into itself, i think i should make the robots in the
+middle of the chain exert forces on their neighbors (attractive when
+distance is too great and repulsive with distance is too small). but i
+also think that the collection of behaviors i'm thinking about is too
+complicated. will think more on saturday
+
+12/17
+many things to report. the two problems i complained about earlier were
+not being able to use the point toward midpoint then move distance to it
+behavior instead of the jumping behavior, and the jumpy end robot problem.
+i found out that the first problem was a discretization error, so i
+decreased R_MOVE_MAX to .5 then the robots did more or less what i
+expected them to do. implementing this behavior removed collisions from
+the simulation.
+
+i fixed the end robot problem by making the end robot
+move exactly perpendicular to the line connecting it to robot with the
+next lowest state when it's within X+-ERROR of that robot. if it's nearer
+the next lowest robot, it moves directly backward (relative the lower
+robot). if it's too far, it moves directly forward.
+
+now, i can get chains with pretty much as many robots as i want to to wait
+for the simulation to go through (tested 500),
+but when there are too many robots, two chains form instead of one. i
+tried fixing this behavior, but it requires that robots in the chain
+communicate a "degenerate" bit or use a behavior that i had trouble
+implementing (ask jeff or lihan about the flying chains). of course, i CAN
+implement the behavior... but is having two chains so terrible? anyway,
+i'm still going to look into the problem. i think i know why two chains
+form, but i'm not sure. i think there a certain probability that a robot
+can see the home loc robot but not the state 1 robot, and the chance that
+one actually attaches as a new state 1 robot of course increases as the
+number of robots increases.
+
+i also noticed that if too many robots use spiraling behavior too near
+each other, they never move beyond a certain region. i suggested jeff use
+spiraling in his simulation to speed up the puck collecting, but i thought
+after i suggested it that the robots wouldn't move anywhere (they didn't).
+i notice the same thing on a more limited scale in my simulation. since
+the chain swings around all the places robots are likely to be, all the
+robots get picked up eventually, but they just hang out at a tea party
+until the chain gets them. i thought we might want to consider a
+different, swarm-based search-movement behavior (can't search if
+don't get beyond a few units of where started...). overall, i'm ready to
+get the chain to collect pucks. i'll probably work on that behavior
+tonight if you think that having multiple chains is ok.
+
+i have another minor problem. the robots attach to the end location in the
+following way: once they see the highest state robot, the circle around it
+and attach when they are 1.95 * C_DIST units away from the second highest
+state robot. this means that every time a robot attaches, the chain moves
+a little to the side that the robots are attaching on. (the circle isn't
+completed) if robots attach
+too rapidly (especially when the chain is long), the chain curves in and
+crashes into itself. but since 1.95 is pretty close to 2, the chain only
+curves problematically when more than about (at the least) 100 robots
+attach to one chain. when i ran the sim with 300 robots, a nice chain of
+about 100 robots formed, and a horrible curved one with the rest of the
+robots formed. i think i can fix the curving by randomizing the direction of
+the highest state robot orbit.
+
+12/18:1
+a major problem earlier in the chain development was the absence of attractive and repulsive forces between adjacent robots with 0 < state < highest state (the "middle" robots). since the middle robots were just jumping to the midpoint on the line connecting the two adjacent chain robots (and skipping collision avoidance), i got a got a ton of collisions. instead of implementing the attractive and repulsive forces at the time, i had the end robot move farther out if it got too close to the robot with the next highest state and closer if it got too far. i figured that the chain would adjust itself... but i didn't account for the chain curving in on itself during the robot attachment process (as i described in the previous entry). to fix that curving problem, i implemented the attractive and repulsive forces so the chain would straighten itself out if it got squashed (not realizing that even if a constant distance were maintained between adjacent robots, the chain might still curve on itself. imagine the chain with uniformly distributed robots on the perimeter of a circle). after i tested the change, i found out that below a point fairly high up on the chain, the behavior worked and created a fairly straight chain; but the segment of the chain above that point rotated in on the other segment with its center of rotation at the point. my current behavior will not solve all curve problems, and even if i did fix the attachment curve problem, there would still be the movement curve problem (the chain rotates well with up to 30 robots, but with any more it collapses on itselt). since the robot at the end can't judge the curvature of the chain without communication, i think i have to focus on the middle robots' behavior. any ideas? i was thinking of moving to the average position of the four adjacent chain robots instead of the two adjacent chain robots' average position, but that would require that R_VIEW_DIST be fairly large. right now, i can create a long chains with R_VIEW_MAX at 20. keeping R_VIEW_MAX at that value would require that C_DIST be 5, which i think would be too limiting because the robots' radii are 1. waiting for your input on the size of R_VIEW_MAX and C_DIST.
+
+12/18:2
+my end robot moves perpendicular to the line connecting it to the robot
+with the next highest state, so any curvature in my chain causes my chain
+to fall into itself. i thought that the middle robots' lag was the cause
+of one kind of curvature--movement curvature--so i thought about a few
+angle communication possibilities that might reduce the lag. before
+thinking more about that, i thought i should conduct a few test runs
+with smaller R_MOVE_MAX values to see if the lag was a discretization
+effect. first, i ran swarmcraft with 50 robots and R_MOVE_MAX at .5. the
+chain crashed into itself within one rotation. next, i ran swarmcraft with
+50 robots and R_MOVE_MAX at .01. the robots' collision avoidance
+behavior created clumps of state -1 robots. apparently the collision
+avoidance behavior counts on large R_MOVE_MAX values. if so, the behavior
+should be rewritten. another problem was tiny spirals. i think i need to
+make the spiral constant inv proportional to R_MOVE_MAX. but... the lag
+effect was gone. i think that the lag is definitely attributable to
+discretization because when i ran the sim with a smaller R_MOVE MAX value,
+i kept the robots' relative velocities the same and the movement curvature
+disappeared. attachment curvature was greatly reduced, too. but really
+small R_MOVE_MAX values create huge data files... my r_pos.dat reached
+800MB before it contained enough data for a long enough simulation.
+
+12/18:3
+need to dissolve extra chains. when two chains form, the chains merge and
+destabilize. i'm going to assume i can fix the extra chain and curvature
+problems later so i can start implementing the puck collection behavior
+(i can form fairly long, stable chains now, so i think it makes sense to
+start implementing the puck collecting behavior. i'm going to archive the
+current version of my simulation. see previous progress reports for info
+on where to find my archives
+
+12/20:1
+i made my sim filenames more descriptive. i also commented on new code and removed older debugging code. this version is archived. new structure (i use the old tree command to get these directory trees, by the way):
+
+|-- Makefile
+|-- PROGRESS
+|-- README
+|-- behavior_functions
+|   |-- angle_between_vecs.c
+|   |-- highest_vis_state_robots.c
+|   |-- list_vis_robots.c
+|   |-- move_robot.c
+|   |-- robot_with_specific_state.c
+|   `-- turn_robot.c
+|-- data_files
+|   |-- README
+|   `-- collision_test
+|-- main.c
+|-- math_utilities
+|   |-- rand2.c
+|   |-- random_position.c
+|   |-- seed.c
+|   |-- sqr.c
+|   |-- vec_add.c
+|   |-- vec_crs.c
+|   |-- vec_dif.c
+|   |-- vec_dot.c
+|   |-- vec_mag.c
+|   |-- vec_rot.c
+|   |-- vec_scl.c
+|   `-- vec_unt.c
+|-- memory_utilities
+|   |-- free_puck_list.c
+|   `-- free_robot_list.c
+|-- misc_utilities
+|   `-- sign.c
+|-- placement_functions
+|   |-- p_placement_2circle.c
+|   |-- p_placement_circle.c
+|   |-- p_placement_hexagon.c
+|   |-- p_placement_line.c
+|   |-- p_placement_rand.c
+|   |-- p_placement_triangle.c
+|   |-- r_placement_rand.c
+|   `-- r_placement_wall.c
+|-- string_utilities
+|   |-- strtoint.c
+|   `-- substring.c
+|-- swarmcraft
+|-- swarmcraft.c
+`-- test_functions
+    |-- README
+    |-- collision_test
+    |-- test_angle_function.c
+    `-- test_for_collisions.c
+
+12/20:2
+i need to do several things. the chain creation behavior is finished, but i need to fix two problems. both occur only when too many robots attach to the chain. when more than about 100 robots join the chain rapidly, the chain curves opposite the direction of the last robot's motion. if the curve is especially pronounced or if more robots join the chain, the chain can crash into itself. if the chain doesn't crash into itself, the end robot still moves perpendicular to the part of the chain it sees, so the chain eventually curves in the direction of motion and caves in. if the attachment curve problem doesn't happen, a chain containing more than about 30 robots eventually caves in because of a discretization effect (the follower, "middle" robots don't respond to the end robot's behavior quickly enough). until i figure out how to fix these problems, i'm going to attempt to implement the puck collection behavior. i need to do the following:
+
+*write a function that returns a list of all the pucks that a particular robot can see
+*write a function that returns the nth closest visible puck to a particular robot
+*figure out how i want robots to pick up and drop off pucks (pick up in front or middle, hold in front or middle, etc)
+*test functions that i write
+*think more about puck collection behavior (how will the robots in the chain know when to stop? etc)
+
+12/20:3
+chain-creation problems:
+
+*chains collapse because of middle robots' lag. (FIXED by decreasing
+R_MOVE_MAX and adjusting OUTPUT to 1+(int)(1.0/R_MOVE_MAX))
+*chain bends over because of rapid attachment. robots circle around
+end robot and attach when part of the way there, so chain curves when
+robots continuously attach bc they only circle around in one direction.
+will fix by choosing which way to attach by prob 1/2
+*multiple chains form (and crash into each other). need to determine why
+this happens and get rid of the reason or get excess chains to dissolve
+
+since i know how to fix these problems and they only effect really
+long chains, i'm going to start implementing puck collection behavior
+
+12/21
+R_MOVE_MAX can now be specified as a console argument to swarmcraft. if R_MOVE_MAX is small enough, my movement curve problem disappears. the attachment curve problem is gone, too. robots randomly swing around both sides of the highest state robot, so the chain doesn't prominently curve to one side anymore. but if more than 200 robots try to attach to the same chain, the large number of robots at the base of the chain trying to move up push the state 1 robot more than C_DIST (which is restricted to < R_VIEW_MAX/2-D_ERROR) units from the home robot and another chain forms. to remedy the mult chain problem, i added an attachment bit to the home robot that is off when it sees a chain and on when it doesn't see a chain. this fixed the mult chain problem in most cases, but if about 500 robots try to attach to the chain, so many robots push outward on the state 1 robot that it leaves the home robot's viewing range and another chain forms. to fix THIS problem, i'm going to make the robots move parallel to the chain a view units away.
+
+12/22
+reviewing... my three chain creation problems were:
+1. movement curve: chain used to curve when it started to move. discovered this was a discretization effect, so made R_MOVE_MAX console argument (R_MOVE_MAX should dec. as r_tot inc.).
+2. attachment curve: robots used to attach to the chain by swinging around the highest state robot then attaching once they were about 95% of the way there, but a rapid succession of attaches caused a curve in the chain bc the new, slightly off end robot would stay still while the next robot attached from the same direction as the first robot, again slightly off. i fixed this problem by making the robots swing around the end robot in both directions according to their sdirection variables
+3. multiple chain and drift: when a large # of robots tried to attach to the chain, a large group of robots drifting up the chain used to form at the base of the chain and drag the state 1 robot with it. once the state 1 robot moved sufficiently far away (> R_VIEW_MAX/2 units) from the home robot, another chain used form. i fixed the new chain formation problem by adding an "attachable" bit to the home robot that would be on (ok for robot to become state 1 robot) if it didn't see a state 1 robot (an existing chain) and off (not ok to attach) if it did see a state 1 robot, but this solution only worked for < about 500 robots. with enough robots, the group of robots at the base of the chain used to drag the state 1 robot farther than R_VIEW_MAX units from the home robot, causing the home robot to change the attachable bit to on and the subsequent formation of a new chain (and a homeless existing chain). i fixed THIS problem by making the robots swing around each "middle" (non home and non highest state) robot like they swing around the highest state robot. now all potential attachers almost never contact the chain robots.
+
+aside from those major changes, i made a few other modifications to my sim. now the format of r_pos.dat is ...\n<char> <float> <float>\n... where the two floats are the x and y coordinates of a particular robot during a particular timestep and the char is n or c, n for not in chain and c for in chain. the reason r_pos.dat distinguishes between chain and attacher robots is so observatory can display the attachers and chain robots in different colors. right now, chain robots are blue and attachers are red. i also modified my collision_test program (see ~hamik/swarm/chain_simulation/current_sim/test_functions) to work with the new r_pos.dat files.
+
+now my chains form exactly how i'd like them to form, but when too many robots cluster together at the base of the chain, the collision avoidance behavior (which i didn't write!!!) causes a "hiccup" and collisions in the group of robots. i need to figure out why these hiccups happen...
+
+today, i'm worried about modern males' low sperm counts
+
+12/26
+i added a directory in ~hamik/swarm/chain_simulation called windows. it contains a readme file that explains how to build swarmcraft and rfile_sim1 in windows, contains the glut libraries necessary for the rfile_sim1 build in case they come off the web, and contains an rfile_sim1 executable. i didn't include a swarmcraft executable because, of course, swarmcraft is continually chainging (and building it in windows is easy). for your convenience, the readme:
+
+to run swarmcraft and rfile_sim1 in windows, download and install dev-c++. dev includes the mingw libraries, so swarmcraft should compile and run without any additional tinkering. to compile and run rfile_sim1, follow the directions on http://people.bath.ac.uk/ab8lam/computing/DevCpp.htm, pasted here in case the site goes down, and use the dev package in this directory in case the link to the dev package on the directions website no longer works.
+
+* install the correct version of glut DevPak from the web, e.g. www.nigels.com/glt/devpak
+
+* download glut.3.7.6+.DevPak to a local folder
+
+* in DevCpp open the package manager:
+  Tools -> Package Manager
+
+* install the glut package:
+  Package -> Install Package
+
+* browse to the local location where the package was downloaded to, follow the installation wizard
+  the glut package should now appear in the main pane.
+  exit package manager
+
+* define the linker options:
+  Project -> Project Options
+
+* in the parameters window add the following line in the linker pane:
+  -lglut32 –lglu32 –lopengl32 –lwinmm –lgdi32
+
+* compile and run the project:
+  Execute -> Compile & Run
+
+since swarmcraft and rfile_sim1 are designed to run in console, you must invoke the executables from console. in newer windows OSs, start->program files->accessories->console. google search for dos commands if you don't know them. the windows rfile_sim1 executable is included in this directory if you don't want to build it
+
+the last paragraph was the last piece of the readme. simulation-wise, i have some issues. in the previous entry, i wrote about hiccups. i verified that hiccups and collisions coincide and that hiccups only happen when a LOT of robots are clustered at the base of the chain waiting for an opening to move up. i still don't know why the hiccups happen other than that the reason involves the collision avoidance behavior (which, again, i didn't write...), but i can probably avoid hiccups if i don't get huge clusters of robots. i'm going to try to make -1 state robots avoid or shoot out of large clusters of -1 state robots. i don't know exactly how yet. instead of working on puck collecting, i'm going to iron out the hiccups and try to get some video screen captures of the observatory program (i built rfile_sim1 for windows because linux video screen capture tools are sparse and capture too few fps or use too much disk space). i'm going to try a free tool on http://www.microsoft.com/windows/windowsmedia/9series/encoder/default.aspx first
+
+1/4
+today i created P_LIST and tested it. it works. i also removed s_plist from swarmcraft.c because it was redundant, and i removed the pucks' previous node references to get rid of an annoying core dump that showed up every ten runs or so. robots can now get lists of all visible pucks and determine which puck is nearest. the next piece of the sim i will implement is the BIG, FINAL piece (puck collecting). dun dun dun! as you've probably guessed, i'm going to ignore the hiccup problem, as perfect collision avoidance is not the object of my project and very occasional collisions don't impact my results significantly. good night!
+
+1/5:1
+added comments to r_move that indicate the beginning and end of chunks of code. these changes improved the readability of r_move. before implementing the puck collection behavior, i am going to write more new robot and puck placement functions. right now, my robots and pucks get randomly placed in a 100 unit by 100 unit box. since my analogy for puck collection is the collection of building materials that fall onto mars from space, placing robots and pucks in this box region is unrealistic. using polar coordinates, i will randomly select an angle for each robot and puck, then choose an r with a gaussian distribution. i will also make sure no pucks and robots are placed into colliding positions. this placement method will create a more realistic spatial distribution with robots more densely clustered nearer the home location. variance will be specifiable through console
+
+1/5:2
+implemented gaussian placement functions. swarmcraft args are now:
+  <# robots> <# pucks> <home x> <home y> <max robot move> <puck placement variance> <robot placement variance>
+also found out that collision detection program does not work sometimes. will look into this
+
+1/6
+*robots that crash into other robots now become immobilized and are output as brown.
+*fixed rand placement functions to leave space around the home loc rob (just enough so robots and pucks will not be placed on top of home loc robot). also fixed rand placement functions to place robots and pucks farther apart at the minimum (previously 2*P_SIZE-ERROR for pucks and P_SIZE+R_SIZE-ERROR for robots. why minus!? made these marginal errors positive and all placement collisions disappeared).
+
+1/7
+*shoot away from home loc if too many robots seen
+*add stopping functionality
+
+1/15
+y chain creation behavior works very well unless the density of
+attacher robots waiting at the base of the chain becomes really, really
+high. even if you consider that a test situation, my chain creation behavior
+definitely works; only the collision avoidance behavior doesn't. robots
+occasionally collide when they are smashed among twenty other robots.
+terrible? i didn't think so, so i started to implement my puck collecting
+behavior. a brief outline of the behavior:
+
+*if you are a -1, spiraling robot, pick up the nearest available puck
+then continue spiraling
+*once you reach the chain, seek the home zone by following the chain
+radially inward and deposit your puck once you arrive at the home zone
+*if you are a member of the chain and spot a puck, or if your neighbor
+communicates to you that it or another robot has seen a puck, stop
+*if the chain stops and you are the end robot, follow the chain down to
+the puck that was spotted, pick it up, then follow the chain to the home
+zone and deposit the puck once you arrive there
+
+i've implemented and tested 1. it works. i also fixed a core dump issue
+
+1/16
+
+i mostly did housekeeping... i reorganized r_move (went from about 700
+lines to 400), took all complicated angle calculation code (such as
+spiral code) out of r_move and into separate functions, and implemented 2
+(see previous progress report--the one that outlines puck collection
+behavior). the attaching robots and dropping off robots move at different
+distances from the chain now
+
+1/18
+revised puck collection algorithm:
+
+*if you see home robot and pucks outside collection zone, pick up 
+nearest puck, deposit it, then continue attaching to chain (or 
+picking up pucks if pucks remain)
+*if you are a member of the chain and spot a puck, or if your neighbor
+communicates to you that it or another robot has seen a puck, stop
+*if the chain stops and you are the end robot, follow the chain down to
+the puck that was spotted, pick it up, then follow the chain to the home
+zone and deposit the puck once you arrive there
+
+the problem with the old algorithm was that robots would pick up pucks
+far away from the home location and not be able to deposit them because
+there would be too many pucks around the home location. now, the robots
+will quickly centralize the pucks near the home location
+
+1/22
+my sim is finished. i finished it earlier than i expected because i
+stumbled on a more elegant solution to my problem. my original solution
+looked something like this:
+
+*form a chain
+*stop the chain when it encounters pucks
+*get some robots from the top of the chain to follow the chain to
+the pucks, pick them up, then follow the chain to the collection
+zone and drop them off
+
+instead of getting the robots at the end of the chain to pick up pucks,
+which would have involved a full trip down the chain for a deposit and a
+full trip up the chain for an attachment, i now have a certain number
+of robots create the chain and certain number of robots continue to
+orbit the chain, collecting pucks. my new algorithm looks something
+like this:
+
+*user inputs the probability that a robot will become a collector.
+robots choose whether they are collectors or attachers accordingly
+*attachers form chain
+*collectors orbit around chain and collect pucks
+
+in detail, my new algorithm is this (it can also be found near the top
+of behavior_functions/move_robot.c as a navigation tool for that file):
+
+*create linked list of all robots within R_VIEW_MAX radius of robot
+  (and initialize misc variables. see comments in code)
+*create linked list of all pucks within R_VIEW_MAX radius of robot
+  (except for any puck that is being carried or does not exist (exist 
+  = 0). also initialize misc variables. see comments in code)
+*don't see robots w/ states >= 0
+  (become a -1 robot if you lose the chain, then spiral)
+*see robots with states >= 0
+  *seeking highest state or attaching to chain. (state is -1)
+    *are searcher robot (will never attach to chain. will keep on 
+     looking for pucks)
+      *don't have a puck
+        *see pucks (seek pucks)
+          *near enough to pick up puck 
+            (pick up puck)
+          *not near enough to pick up puck 
+            (move straight toward puck)
+        *do not see pucks 
+          (orbit around chain at 3/2.0 * C_DIST)
+      *have a puck 
+        (orbit around chain at 2 * C_DIST)
+    *are chain former robot (will attach to chain and ignore puck 
+     collection)
+      *within attaching distance of the robot with the highest vis state
+        *attach at any angle if highest state rob is the home loc rob 
+          (become first element of chain)
+        *at end of chain 
+          (attach to chain)
+      *moving toward highest vis state (orbit around chain at C_DIST)
+  *home loc robot (state is 0. adjust attachable bit so only one chain 
+   forms)
+  *in-chain behavior (state is > 0)
+    *are driver. highest state robot 
+      (move perpendicular to chain. move 
+      closer to robot below you if you move out too far, and move away 
+      from robot below you if you move in too close. sif you see a 
+      robot trying to attach (a robot with state -1 that is designated 
+      a chain former with attachable = 1), stop and wait for it to 
+      attach)
+    *are middle robot 
+      (move to midpoint of line connecting robots with next highest and 
+      next lowest states (home robot and state 2 robot if you are state 
+      1 robot)
+*don't bump into other robots
+  (avoid collisions with robots)
+*don't bump into pucks
+  (avoid collisions with pucks that exist and are not being carried)
+*execute move
+  (reset your position vector p and reset the position vector of the 
+  puck that you are carrying, if you are carrying one)
+*free memory used by this function
+  (free memory used used by routines that constructed linked lists of 
+  visible robots and pucks. see range_r and range_p)
+*turn
+  (if robot and puck collision avoidance behavior asks you to turn, 
+  turn!)
+
+NOTE: may want to modify observatory to display only 'e' pucks on top
+of robots ('d' pucks under)

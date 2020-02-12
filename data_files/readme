@@ -1,0 +1,5 @@
+in most versions of swarmcraft, data files are observed in a subdirectory of the main simulation directory with a program called rfile_sim1 (the subdirectory is usually named observatory). as i worked on my "chain" version of swarmcraft, i found that it was easier to use an observatory program housed above the main simulation directory because i made frequent changes to observatory and wanted them to apply to all versions of my program. the directory that i keep my observatory program in is called new_observatory. if this is the final archived version of my chain simulation, new_observatory should be included in the main simulation directory
+
+mess around with delay variable until you find the right display speed for your computer
+
+check for robot-puck collisions and puck-puck collisions if this message is still here
